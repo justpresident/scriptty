@@ -1,6 +1,12 @@
 use std::fs;
 use std::process::Command;
 
+// Get the path to the scriptty binary built by cargo test
+fn get_scriptty_bin() -> std::path::PathBuf {
+    // cargo test builds the binary and sets this env var
+    env!("CARGO_BIN_EXE_scriptty").into()
+}
+
 #[test]
 fn test_basic_script_execution() {
     // Create a simple test script
@@ -14,7 +20,7 @@ wait 100ms
     fs::write(script_path, script).expect("Failed to write test script");
 
     // Run scriptty
-    let output = Command::new("./target/release/scriptty")
+    let output = Command::new(get_scriptty_bin())
         .arg("--script")
         .arg(script_path)
         .arg("--command")
@@ -55,7 +61,7 @@ type "exit"
     fs::write(script_path, script).expect("Failed to write test script");
 
     // Run scriptty
-    let output = Command::new("./target/release/scriptty")
+    let output = Command::new(get_scriptty_bin())
         .arg("--script")
         .arg(script_path)
         .arg("--command")
@@ -94,7 +100,7 @@ type "exit"
     fs::write(script_path, script).expect("Failed to write test script");
 
     // Run scriptty
-    let output = Command::new("./target/release/scriptty")
+    let output = Command::new(get_scriptty_bin())
         .arg("--script")
         .arg(script_path)
         .arg("--command")
@@ -124,7 +130,7 @@ invalid_command "test"
     fs::write(script_path, script).expect("Failed to write test script");
 
     // Run scriptty - should fail
-    let output = Command::new("./target/release/scriptty")
+    let output = Command::new(get_scriptty_bin())
         .arg("--script")
         .arg(script_path)
         .arg("--command")
@@ -161,7 +167,7 @@ expect "this_will_never_appear" 500ms
     fs::write(script_path, script).expect("Failed to write test script");
 
     // Run scriptty - should fail with timeout
-    let output = Command::new("./target/release/scriptty")
+    let output = Command::new(get_scriptty_bin())
         .arg("--script")
         .arg(script_path)
         .arg("--command")
@@ -200,7 +206,7 @@ type "exit"
     fs::write(script_path, script).expect("Failed to write test script");
 
     // Run scriptty
-    let output = Command::new("./target/release/scriptty")
+    let output = Command::new(get_scriptty_bin())
         .arg("--script")
         .arg(script_path)
         .arg("--command")
