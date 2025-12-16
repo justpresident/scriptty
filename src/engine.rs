@@ -118,6 +118,8 @@ impl Engine {
             let delay_ms = rng.gen_range(min_delay.as_millis()..=max_delay.as_millis());
             sleep(Duration::from_millis(delay_ms as u64)).await;
         }
+        // Longer delay after the last character before hitting
+        sleep(Duration::from_millis(2 * max_delay.as_millis() as u64)).await;
 
         // After typing is done, send the complete text to the program
         let mut input = text.to_string();
