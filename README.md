@@ -81,17 +81,30 @@ This avoids:
 ## Example Script
 
 ```text
-wait 1s
+# Wait for bash prompt
+expect "$ "
+
+# Type a command with realistic delays
 type "put github.username littlejohnny"
+
+# Wait for specific output before continuing
+expect "saved"
+
+# Small pause
 wait 500ms
+
+# Execute another command
 type "get github.*"
+
+# Wait for the output
+expect "littlejohnny"
 ```
 
 ## Event Model
 
 Internally, everything is an event:
 
-```
+```rust
 enum Event {
     SendToProgram(Vec<u8>),
     ShowToUser(Vec<u8>),
@@ -101,10 +114,23 @@ enum Event {
         max_delay: Duration,
     },
     Sleep(Duration),
+    Expect {
+        pattern: String,
+        timeout: Duration,
+    },
 }
 ```
 
 **Program input and user-visible output are separate streams.**
+
+## Script Commands
+
+| Command | Syntax | Description |
+|---------|--------|-------------|
+| `wait` | `wait 1s` or `wait 500ms` | Pause execution for specified duration |
+| `type` | `type "text here"` | Simulate realistic typing (50-150ms per char) |
+| `send` | `send "text here"` | Send input instantly to program (not visible) |
+| `expect` | `expect "pattern"` or `expect "pattern" 10s` | Wait for pattern in output (default 5s timeout) |
 
 ## Project Status
 

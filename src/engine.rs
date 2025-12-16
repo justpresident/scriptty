@@ -11,12 +11,17 @@ use tokio::time::sleep;
 pub struct Engine {
     pty: PtySession,
     output_rx: Receiver<Vec<u8>>,
+    output_buffer: String,
 }
 
 impl Engine {
     /// Create a new engine with a PTY session and output receiver
     pub fn new(pty: PtySession, output_rx: Receiver<Vec<u8>>) -> Self {
-        Engine { pty, output_rx }
+        Engine {
+            pty,
+            output_rx,
+            output_buffer: String::new(),
+        }
     }
 
     /// Execute a sequence of events
@@ -59,6 +64,10 @@ impl Engine {
                 sleep(duration).await;
                 // Check for any output while sleeping
                 self.flush_pty_output().await?;
+            }
+
+            Event::Expect { pattern, timeout } => {
+                self.wait_for_pattern(&pattern, timeout).await?;
             }
         }
 
@@ -115,6 +124,15 @@ impl Engine {
                 Ok(data) => {
                     io::stdout().write_all(&data)?;
                     io::stdout().flush()?;
+
+                    // Add to buffer for expect commands
+                    let text = String::from_utf8_lossy(&data);
+                    self.output_buffer.push_str(&text);
+
+                    // Prevent buffer from growing too large
+                    if self.output_buffer.len() > 10000 {
+                        self.output_buffer.drain(..5000);
+                    }
                 }
                 Err(_) => break, // Timeout or disconnected
             }
@@ -128,6 +146,15 @@ impl Engine {
         while let Ok(data) = self.output_rx.try_recv() {
             io::stdout().write_all(&data)?;
             io::stdout().flush()?;
+
+            // Add to buffer for expect commands
+            let text = String::from_utf8_lossy(&data);
+            self.output_buffer.push_str(&text);
+
+            // Prevent buffer from growing too large
+            if self.output_buffer.len() > 10000 {
+                self.output_buffer.drain(..5000);
+            }
         }
 
         Ok(())
@@ -136,5 +163,66 @@ impl Engine {
     /// Wait for the PTY process to exit
     pub fn wait_for_exit(&mut self) -> Result<()> {
         self.pty.wait()
+    }
+
+    /// Wait for a specific pattern to appear in the output
+    async fn wait_for_pattern(&mut self, pattern: &str, timeout: Duration) -> Result<()> {
+        // First check if the pattern is already in the buffer
+        if self.output_buffer.contains(pattern) {
+            // Clear the buffer up to and including the pattern
+            if let Some(idx) = self.output_buffer.find(pattern) {
+                let end_idx = idx + pattern.len();
+                self.output_buffer.drain(..end_idx);
+            }
+            return Ok(());
+        }
+
+        let deadline = tokio::time::Instant::now() + timeout;
+
+        loop {
+            // Check if we've exceeded the timeout
+            if tokio::time::Instant::now() >= deadline {
+                return Err(anyhow::anyhow!(
+                    "Timeout waiting for pattern: '{}'",
+                    pattern
+                ));
+            }
+
+            // Calculate remaining timeout
+            let remaining = deadline - tokio::time::Instant::now();
+            let check_timeout = remaining.min(Duration::from_millis(50));
+
+            // Try to read more output
+            match self.output_rx.recv_timeout(check_timeout.into()) {
+                Ok(data) => {
+                    // Display the data
+                    io::stdout().write_all(&data)?;
+                    io::stdout().flush()?;
+
+                    // Add to buffer (convert from bytes to string, ignoring invalid UTF-8)
+                    let text = String::from_utf8_lossy(&data);
+                    self.output_buffer.push_str(&text);
+
+                    // Check if pattern is found
+                    if self.output_buffer.contains(pattern) {
+                        // Clear the buffer up to and including the pattern
+                        if let Some(idx) = self.output_buffer.find(pattern) {
+                            let end_idx = idx + pattern.len();
+                            self.output_buffer.drain(..end_idx);
+                        }
+                        return Ok(());
+                    }
+
+                    // Prevent buffer from growing too large
+                    if self.output_buffer.len() > 10000 {
+                        self.output_buffer.drain(..5000);
+                    }
+                }
+                Err(_) => {
+                    // Timeout or channel closed, continue checking
+                    continue;
+                }
+            }
+        }
     }
 }

@@ -18,6 +18,9 @@ pub enum Event {
 
     /// Pause execution
     Sleep(Duration),
+
+    /// Wait for specific text to appear in program output
+    Expect { pattern: String, timeout: Duration },
 }
 
 impl Event {
@@ -58,5 +61,21 @@ impl Event {
     /// Create a Sleep event
     pub fn sleep(duration: Duration) -> Self {
         Event::Sleep(duration)
+    }
+
+    /// Create an Expect event with default timeout (5s)
+    pub fn expect(pattern: impl Into<String>) -> Self {
+        Event::Expect {
+            pattern: pattern.into(),
+            timeout: Duration::from_secs(5),
+        }
+    }
+
+    /// Create an Expect event with custom timeout
+    pub fn expect_with_timeout(pattern: impl Into<String>, timeout: Duration) -> Self {
+        Event::Expect {
+            pattern: pattern.into(),
+            timeout,
+        }
     }
 }

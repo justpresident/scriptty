@@ -49,14 +49,8 @@ async fn main() -> Result<()> {
     // Spawn background reader thread
     let output_rx = pty_reader::spawn_reader(reader);
 
-    // Give the program time to start up and drain initial output
-    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
-
-    // Drain initial output (like bash prompt)
-    while let Ok(data) = output_rx.recv_timeout(std::time::Duration::from_millis(50)) {
-        std::io::stdout().write_all(&data)?;
-        std::io::stdout().flush()?;
-    }
+    // Give the program time to start up
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     // Create and run the engine
     let mut engine = Engine::new(pty, output_rx);
