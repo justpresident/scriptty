@@ -1,5 +1,5 @@
 use crate::event::Event;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::time::Duration;
 
 /// Parse a script file into a sequence of events
@@ -31,7 +31,7 @@ fn strip_inline_comment(line: &str) -> &str {
     let mut in_quotes = false;
     let mut escaped = false;
 
-    for (i, ch) in line.chars().enumerate() {
+    for (i, ch) in line.char_indices() {
         if escaped {
             escaped = false;
             continue;
@@ -145,10 +145,7 @@ fn parse_duration(s: &str) -> Result<Duration> {
         let secs: f64 = s_str.trim().parse().context("Invalid seconds value")?;
         Ok(Duration::from_secs_f64(secs))
     } else {
-        Err(anyhow!(
-            "Duration must end with 's' or 'ms', got: {}",
-            s
-        ))
+        Err(anyhow!("Duration must end with 's' or 'ms', got: {}", s))
     }
 }
 
@@ -197,7 +194,10 @@ mod tests {
             parse_quoted_string("\"hello world\"").unwrap(),
             "hello world"
         );
-        assert_eq!(parse_quoted_string("\"hello\\nworld\"").unwrap(), "hello\nworld");
+        assert_eq!(
+            parse_quoted_string("\"hello\\nworld\"").unwrap(),
+            "hello\nworld"
+        );
     }
 
     #[test]
@@ -363,8 +363,14 @@ send "exit"
     #[test]
     fn test_strip_inline_comments() {
         assert_eq!(strip_inline_comment("wait 1s # comment"), "wait 1s");
-        assert_eq!(strip_inline_comment("type \"test\" # inline"), "type \"test\"");
-        assert_eq!(strip_inline_comment("type \"#hashtag\""), "type \"#hashtag\"");
+        assert_eq!(
+            strip_inline_comment("type \"test\" # inline"),
+            "type \"test\""
+        );
+        assert_eq!(
+            strip_inline_comment("type \"#hashtag\""),
+            "type \"#hashtag\""
+        );
         assert_eq!(
             strip_inline_comment("type \"test#1\" # comment"),
             "type \"test#1\""

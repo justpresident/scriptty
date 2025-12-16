@@ -9,7 +9,6 @@ use clap::Parser;
 use engine::Engine;
 use pty::PtySession;
 use std::fs;
-use std::io::Write;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -39,12 +38,11 @@ async fn main() -> Result<()> {
     let script_content = fs::read_to_string(&args.script)
         .with_context(|| format!("Failed to read script file: {}", args.script))?;
 
-    let events = parser::parse_script(&script_content)
-        .context("Failed to parse script")?;
+    let events = parser::parse_script(&script_content).context("Failed to parse script")?;
 
     // Spawn the PTY with the target program
-    let (pty, reader) = PtySession::spawn(&args.command, &args.args)
-        .context("Failed to spawn PTY")?;
+    let (pty, reader) =
+        PtySession::spawn(&args.command, &args.args).context("Failed to spawn PTY")?;
 
     // Spawn background reader thread
     let output_rx = pty_reader::spawn_reader(reader);

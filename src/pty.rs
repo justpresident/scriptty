@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use portable_pty::{CommandBuilder, Child, MasterPty, PtySize};
+use portable_pty::{Child, CommandBuilder, MasterPty, PtySize};
 use std::io::{Read, Write};
 
 /// Manages a program running inside a PTY
@@ -23,9 +23,7 @@ impl PtySession {
             pixel_height: 0,
         };
 
-        let pair = pty_system
-            .openpty(pty_size)
-            .context("Failed to open PTY")?;
+        let pair = pty_system.openpty(pty_size).context("Failed to open PTY")?;
 
         // Build the command
         let mut cmd = CommandBuilder::new(command);

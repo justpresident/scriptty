@@ -4,23 +4,53 @@ use anyhow::Result;
 use rand::Rng;
 use std::io::{self, Write};
 use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::sleep;
 
 /// The demo engine that executes events and manages presentation
 pub struct Engine {
     pty: PtySession,
-    output_rx: Receiver<Vec<u8>>,
-    output_buffer: String,
+    output_buffer: Arc<Mutex<String>>,
+    _output_task: tokio::task::JoinHandle<()>,
 }
 
 impl Engine {
     /// Create a new engine with a PTY session and output receiver
     pub fn new(pty: PtySession, output_rx: Receiver<Vec<u8>>) -> Self {
+        let output_buffer = Arc::new(Mutex::new(String::new()));
+        let buffer_clone = output_buffer.clone();
+
+        // Spawn background task to continuously drain output and display it
+        let output_task = tokio::task::spawn_blocking(move || {
+            while let Ok(data) = output_rx.recv() {
+                // Immediately write to stdout
+                if let Err(e) = io::stdout().write_all(&data) {
+                    eprintln!("Error writing to stdout: {}", e);
+                    break;
+                }
+                if let Err(e) = io::stdout().flush() {
+                    eprintln!("Error flushing stdout: {}", e);
+                    break;
+                }
+
+                // Add to buffer for expect pattern matching
+                if let Ok(mut buffer) = buffer_clone.lock() {
+                    let text = String::from_utf8_lossy(&data);
+                    buffer.push_str(&text);
+
+                    // Prevent buffer from growing too large
+                    if buffer.len() > 10000 {
+                        buffer.drain(..5000);
+                    }
+                }
+            }
+        });
+
         Engine {
             pty,
-            output_rx,
-            output_buffer: String::new(),
+            output_buffer,
+            _output_task: output_task,
         }
     }
 
@@ -30,9 +60,8 @@ impl Engine {
             self.execute_event(event).await?;
         }
 
-        // After all events, wait a bit for final output
-        sleep(Duration::from_millis(500)).await;
-        self.flush_pty_output().await?;
+        // After all events, wait a bit for final output to be displayed
+        sleep(Duration::from_millis(300)).await;
 
         Ok(())
     }
@@ -43,8 +72,7 @@ impl Engine {
             Event::SendToProgram(data) => {
                 self.pty.write(&data)?;
                 // Give the program a moment to process
-                sleep(Duration::from_millis(10)).await;
-                self.flush_pty_output().await?;
+                sleep(Duration::from_millis(50)).await;
             }
 
             Event::ShowToUser(data) => {
@@ -62,8 +90,6 @@ impl Engine {
 
             Event::Sleep(duration) => {
                 sleep(duration).await;
-                // Check for any output while sleeping
-                self.flush_pty_output().await?;
             }
 
             Event::Expect { pattern, timeout } => {
@@ -91,9 +117,6 @@ impl Engine {
             // Random delay between min and max
             let delay_ms = rng.gen_range(min_delay.as_millis()..=max_delay.as_millis());
             sleep(Duration::from_millis(delay_ms as u64)).await;
-
-            // Check for program output while typing
-            self.try_flush_pty_output()?;
         }
 
         // After typing is done, send the complete text to the program
@@ -105,81 +128,35 @@ impl Engine {
         println!();
 
         // Small delay for program to process
-        sleep(Duration::from_millis(50)).await;
-
-        // Get the program's response
-        self.flush_pty_output().await?;
-
-        Ok(())
-    }
-
-    /// Read and display all available output from the PTY
-    async fn flush_pty_output(&mut self) -> Result<()> {
-        // Give the program time to produce output
         sleep(Duration::from_millis(100)).await;
-
-        // Drain the channel with timeout
-        loop {
-            match self.output_rx.recv_timeout(Duration::from_millis(50)) {
-                Ok(data) => {
-                    io::stdout().write_all(&data)?;
-                    io::stdout().flush()?;
-
-                    // Add to buffer for expect commands
-                    let text = String::from_utf8_lossy(&data);
-                    self.output_buffer.push_str(&text);
-
-                    // Prevent buffer from growing too large
-                    if self.output_buffer.len() > 10000 {
-                        self.output_buffer.drain(..5000);
-                    }
-                }
-                Err(_) => break, // Timeout or disconnected
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Try to read output from PTY without blocking
-    fn try_flush_pty_output(&mut self) -> Result<()> {
-        while let Ok(data) = self.output_rx.try_recv() {
-            io::stdout().write_all(&data)?;
-            io::stdout().flush()?;
-
-            // Add to buffer for expect commands
-            let text = String::from_utf8_lossy(&data);
-            self.output_buffer.push_str(&text);
-
-            // Prevent buffer from growing too large
-            if self.output_buffer.len() > 10000 {
-                self.output_buffer.drain(..5000);
-            }
-        }
 
         Ok(())
     }
 
     /// Wait for the PTY process to exit
+    #[allow(dead_code)]
     pub fn wait_for_exit(&mut self) -> Result<()> {
         self.pty.wait()
     }
 
     /// Wait for a specific pattern to appear in the output
     async fn wait_for_pattern(&mut self, pattern: &str, timeout: Duration) -> Result<()> {
-        // First check if the pattern is already in the buffer
-        if self.output_buffer.contains(pattern) {
-            // Clear the buffer up to and including the pattern
-            if let Some(idx) = self.output_buffer.find(pattern) {
-                let end_idx = idx + pattern.len();
-                self.output_buffer.drain(..end_idx);
-            }
-            return Ok(());
-        }
-
         let deadline = tokio::time::Instant::now() + timeout;
 
         loop {
+            // Check the buffer (background task is continuously filling it)
+            {
+                let mut buffer = self.output_buffer.lock().unwrap();
+                if buffer.contains(pattern) {
+                    // Clear the buffer up to and including the pattern
+                    if let Some(idx) = buffer.find(pattern) {
+                        let end_idx = idx + pattern.len();
+                        buffer.drain(..end_idx);
+                    }
+                    return Ok(());
+                }
+            } // Release lock
+
             // Check if we've exceeded the timeout
             if tokio::time::Instant::now() >= deadline {
                 return Err(anyhow::anyhow!(
@@ -188,41 +165,8 @@ impl Engine {
                 ));
             }
 
-            // Calculate remaining timeout
-            let remaining = deadline - tokio::time::Instant::now();
-            let check_timeout = remaining.min(Duration::from_millis(50));
-
-            // Try to read more output
-            match self.output_rx.recv_timeout(check_timeout.into()) {
-                Ok(data) => {
-                    // Display the data
-                    io::stdout().write_all(&data)?;
-                    io::stdout().flush()?;
-
-                    // Add to buffer (convert from bytes to string, ignoring invalid UTF-8)
-                    let text = String::from_utf8_lossy(&data);
-                    self.output_buffer.push_str(&text);
-
-                    // Check if pattern is found
-                    if self.output_buffer.contains(pattern) {
-                        // Clear the buffer up to and including the pattern
-                        if let Some(idx) = self.output_buffer.find(pattern) {
-                            let end_idx = idx + pattern.len();
-                            self.output_buffer.drain(..end_idx);
-                        }
-                        return Ok(());
-                    }
-
-                    // Prevent buffer from growing too large
-                    if self.output_buffer.len() > 10000 {
-                        self.output_buffer.drain(..5000);
-                    }
-                }
-                Err(_) => {
-                    // Timeout or channel closed, continue checking
-                    continue;
-                }
-            }
+            // Small sleep before checking again
+            sleep(Duration::from_millis(10)).await;
         }
     }
 }

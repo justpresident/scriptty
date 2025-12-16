@@ -1,5 +1,5 @@
 use std::io::Read;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, channel};
 use std::thread;
 
 /// Spawns a background thread to read from a PTY
