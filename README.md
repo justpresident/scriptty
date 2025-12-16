@@ -10,6 +10,9 @@ Perfect for:
 - README demos
 - CLI tutorials
 
+## Example demo for [rcypher](https://github.com/justpresident/rcypher/) CLI
+Full script for the example is in [examples/rcypher.script](https://github.com/justpresident/scriptty/blob/master/examples/rcypher.script)
+![rcypher demo session](examples/rcypher.gif)
 ---
 
 ## Why This Exists
