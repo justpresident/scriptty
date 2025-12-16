@@ -18,7 +18,7 @@ wait 100ms
         .arg("--script")
         .arg(script_path)
         .arg("--command")
-        .arg("bash")
+        .arg("sh")
         .output()
         .expect("Failed to execute scriptty");
 
@@ -59,7 +59,7 @@ type "exit"
         .arg("--script")
         .arg(script_path)
         .arg("--command")
-        .arg("bash")
+        .arg("sh")
         .output()
         .expect("Failed to execute scriptty");
 
@@ -98,7 +98,7 @@ type "exit"
         .arg("--script")
         .arg(script_path)
         .arg("--command")
-        .arg("bash")
+        .arg("sh")
         .output()
         .expect("Failed to execute scriptty");
 
@@ -128,7 +128,7 @@ invalid_command "test"
         .arg("--script")
         .arg(script_path)
         .arg("--command")
-        .arg("bash")
+        .arg("sh")
         .output()
         .expect("Failed to execute scriptty");
 
@@ -165,7 +165,7 @@ expect "this_will_never_appear" 500ms
         .arg("--script")
         .arg(script_path)
         .arg("--command")
-        .arg("bash")
+        .arg("sh")
         .output()
         .expect("Failed to execute scriptty");
 
@@ -204,7 +204,7 @@ type "exit"
         .arg("--script")
         .arg(script_path)
         .arg("--command")
-        .arg("bash")
+        .arg("sh")
         .output()
         .expect("Failed to execute scriptty");
 
