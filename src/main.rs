@@ -53,10 +53,16 @@ async fn main() -> Result<()> {
     // Create and run the engine
     let mut engine = Engine::new(pty, output_rx);
 
+    clear_screen();
+
     engine
         .execute(events)
         .await
         .context("Failed to execute events")?;
 
     Ok(())
+}
+
+fn clear_screen() {
+    print!("\x1B[2J\x1B[1;1H"); // Clear screen
 }
