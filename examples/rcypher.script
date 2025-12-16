@@ -1,0 +1,54 @@
+# Example demo script for scriptty
+# This simulates a user interacting with rcypher command started in bash.
+# 
+# To run this demo:
+# 1. install `rcypher` tool: https://github.com/justpresident/rcypher/
+# 2. Run: `scriptty --script examples/rcypher.script --command bash`
+
+wait 1s
+type "rcypher ~/secure_file"
+wait 500ms
+send "password"
+expect "cypher > "
+
+wait 1s
+type "put github.username littlejohnny"
+expect "cypher > "
+
+wait 500ms
+type "put github.password my strong passwd"
+expect "cypher > "
+
+wait 500ms
+type "get github.password"
+expect "cypher > "
+
+wait 500ms
+type "get github.*"
+expect "cypher > "
+
+wait 500ms
+type "put personal.passport.number 1223123"
+expect "cypher > "
+
+wait 500ms
+type "put personal.passport.valid_until 02/02/2032"
+expect "cypher > "
+
+wait 500ms
+type "search number"
+expect "cypher > "
+
+wait 500ms
+type "get personal.passport.number"
+expect "cypher > "
+
+wait 500ms
+type "search passport"
+expect "cypher > "
+
+wait 500ms
+type "search"
+expect "cypher > "
+
+wait 1s

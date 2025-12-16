@@ -1,0 +1,38 @@
+# Demo script showing a small interaction with bash
+#
+# To run this command execute: `scriptty --script examples/demo_show.script --command bash`
+
+show "=== Scriptty Demo with Narration ==="
+show ""
+
+# Wait for prompt
+expect "$"
+
+show "# Step 1: We'll echo a greeting"
+wait 500ms
+type "echo 'Hello, World!'"
+expect "Hello, World!"
+
+wait 500ms
+expect "$"
+
+show ""
+show "# Step 2: Let's check the current directory"
+wait 500ms
+type "pwd"
+expect "/"
+
+wait 500ms
+expect "$"
+
+show ""
+show "# Step 3: Listing files"
+wait 500ms
+type "ls -l | head -5"
+wait 1s
+
+expect "$"
+show ""
+show "=== Demo Complete ==="
+
+type "exit"
