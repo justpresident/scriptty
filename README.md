@@ -2,13 +2,11 @@
 
 Create **realistic, reproducible terminal demos** for any interactive CLI — without depending on how the application echoes input.
 
-This project runs a command-line program inside a pseudo-terminal (PTY), **decouples execution from presentation**, and renders scripted interactions as believable human typing.
+This project runs a command-line program inside a pseudo-terminal (PTY), **decouples execution from presentation**, and renders scripted interactions as human-like typing.
 
 Perfect for:
 - README demos
-- Conference recordings
 - CLI tutorials
-- CI-generated screencasts
 
 ---
 
@@ -81,6 +79,9 @@ This avoids:
 ## Example Script
 
 ```text
+# Display narration to the viewer
+show "=== Configuration Demo ==="
+
 # Wait for bash prompt
 expect "$ "
 
@@ -89,6 +90,8 @@ type "put github.username littlejohnny"
 
 # Wait for specific output before continuing
 expect "saved"
+
+show "Configuration saved! Now retrieving..."
 
 # Small pause
 wait 500ms
@@ -130,6 +133,7 @@ enum Event {
 | `wait` | `wait 1s` or `wait 500ms` | Pause execution for specified duration |
 | `type` | `type "text here"` | Simulate realistic typing (50-150ms per char) |
 | `send` | `send "text here"` | Send input instantly to program (not visible) |
+| `show` | `show "message"` | Display text directly to viewer (narration, comments) |
 | `expect` | `expect "pattern"` or `expect "pattern" 10s` | Wait for pattern in output (default 5s timeout) |
 
 ## Project Status
@@ -164,7 +168,7 @@ This project grew out of real-world frustration trying to record high-quality de
 
 # License
 
-MIT
+Apache 2.0
 
 # Contributing
 

@@ -32,17 +32,16 @@ impl Event {
     }
 
     /// Create a ShowToUser event from a string
+    /// This displays text directly to the user without sending it to the program
     pub fn show(text: impl Into<String>) -> Self {
-        Event::ShowToUser(text.into().into_bytes())
+        let mut text = text.into();
+        text.push('\n');
+        Event::ShowToUser(text.into_bytes())
     }
 
     /// Create a TypeText event with default timing (50-150ms per char)
     pub fn type_text(text: impl Into<String>) -> Self {
-        Event::TypeText {
-            text: text.into(),
-            min_delay: Duration::from_millis(50),
-            max_delay: Duration::from_millis(150),
-        }
+        Self::type_text_with_timing(text, Duration::from_millis(50), Duration::from_millis(150))
     }
 
     /// Create a TypeText event with custom timing

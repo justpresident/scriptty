@@ -65,6 +65,8 @@ fn parse_line(line: &str) -> Result<Event> {
         parse_send(rest)
     } else if let Some(rest) = line.strip_prefix("expect ") {
         parse_expect(rest)
+    } else if let Some(rest) = line.strip_prefix("show ") {
+        parse_show(rest)
     } else {
         Err(anyhow!("Unknown command: {}", line))
     }
@@ -86,6 +88,12 @@ fn parse_type(rest: &str) -> Result<Event> {
 fn parse_send(rest: &str) -> Result<Event> {
     let text = parse_quoted_string(rest)?;
     Ok(Event::send(text))
+}
+
+/// Parse a show command: show "text to display"
+fn parse_show(rest: &str) -> Result<Event> {
+    let text = parse_quoted_string(rest)?;
+    Ok(Event::show(text))
 }
 
 /// Parse an expect command: expect "pattern" [timeout]
@@ -388,5 +396,34 @@ expect "world" 2s # Wait for response
 
         let events = parse_script(script).unwrap();
         assert_eq!(events.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_show_command() {
+        let script = r#"show "This is a message""#;
+        let events = parse_script(script).unwrap();
+        assert_eq!(events.len(), 1);
+
+        match &events[0] {
+            Event::ShowToUser(data) => {
+                let text = String::from_utf8_lossy(data);
+                assert!(text.contains("This is a message"));
+            }
+            _ => panic!("Expected ShowToUser event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_all_commands() {
+        let script = r#"
+wait 500ms
+type "command"
+send "instant"
+expect "output"
+show "Comment: This is happening"
+"#;
+
+        let events = parse_script(script).unwrap();
+        assert_eq!(events.len(), 5);
     }
 }
