@@ -30,6 +30,76 @@ Instead of relying on the application to echo input, it introduces a proxy that 
 
 ---
 
+## Installation
+### Prebuilt binaries (recommended)
+
+Download from the [stable release](https://github.com/justpresident/scriptty/releases/download/v0.1.0/scriptty)
+
+### Build from source
+
+scriptty is written in Rust. You’ll need the Rust toolchain installed.
+
+**1. Install Rust**
+
+If you don’t have Rust yet, install it with:
+
+`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+
+Then restart your shell or run:
+
+`source "$HOME/.cargo/env"`
+
+Verify installation: `rustc --version`
+
+**2. Clone the repository**
+```
+git clone https://github.com/justpresident/scriptty.git
+cd scriptty
+```
+
+**3. Build the project**
+
+`cargo build --release`
+
+The binary will be available at: `target/release/scriptty`
+
+You can run it directly:
+
+`./target/release/scriptty --help`
+
+**Optional: install globally**
+
+If you want scriptty in your $PATH:
+
+`cargo install --path .`
+
+
+Then you can run:
+
+`scriptty --help`
+
+**Requirements**
+
+* Linux or macOS (PTY support required)
+
+* Rust 1.70+ (stable)
+
+* A terminal that supports ANSI escape sequences
+
+**Troubleshooting**
+
+If the build fails on Linux, make sure you have:
+
+* build-essential
+
+* pkg-config
+
+On macOS, make sure Xcode Command Line Tools are installed:
+
+`xcode-select --install`
+
+---
+
 ## Core Idea
 
 > **Decouple program execution from terminal presentation.**
