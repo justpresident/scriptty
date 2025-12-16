@@ -1,3 +1,5 @@
+![CI](https://github.com/justpresident/scriptty/actions/workflows/ci.yml/badge.svg)
+
 # Scriptty - Terminal Proxy Demo Engine
 
 Create **realistic, reproducible terminal demos** for any interactive CLI — without depending on how the application echoes input.
