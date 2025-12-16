@@ -1,0 +1,11 @@
+[package]
+name = "scriptty"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+portable-pty = "0.8"
+tokio = { version = "1", features = ["full"] }
+rand = "0.8"
+anyhow = "1.0"
+clap = { version = "4", features = ["derive"] }

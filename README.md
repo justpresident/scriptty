@@ -1,0 +1,146 @@
+# Scriptty - Terminal Proxy Demo Engine
+
+Create **realistic, reproducible terminal demos** for any interactive CLI — without depending on how the application echoes input.
+
+This project runs a command-line program inside a pseudo-terminal (PTY), **decouples execution from presentation**, and renders scripted interactions as believable human typing.
+
+Perfect for:
+- README demos
+- Conference recordings
+- CLI tutorials
+- CI-generated screencasts
+
+---
+
+## Why This Exists
+
+Tools like `expect`, `script`, and even `asciinema` struggle with realistic demos because:
+
+- Input echo timing is controlled by the target application
+- Keystrokes often appear only after a newline
+- Readline-based apps redraw internally
+- Typing realism is unreliable and brittle
+
+**This tool solves that by design.**
+
+Instead of relying on the application to echo input, it introduces a proxy that controls **what the viewer sees** independently from **what the program receives**.
+
+---
+
+## Core Idea
+
+> **Decouple program execution from terminal presentation.**
+
+The program receives input instantly and deterministically.  
+The viewer sees carefully timed output that looks like real typing.
+
+```
+┌────────────┐
+│ Program    │ (runs in PTY)
+└─────▲──────┘
+      │
+┌─────┴──────┐
+│ Engine     │ (script + timing)
+└─────▲──────┘
+      │
+┌─────┴──────┐
+│ Renderer   │ (what the viewer sees)
+└────────────┘
+```
+
+---
+
+## Features
+
+- 🧠 **Program-independent typing simulation**
+- 🧪 Deterministic, scriptable demos
+- ⌨️ Realistic per-character typing with jitter
+- ⏱️ Controlled pauses and timing
+- 📼 Compatible with asciinema recordings
+- 🔁 Reproducible demos (great for CI)
+- 🧩 Generic — works with *any* interactive CLI
+
+---
+
+## How It Works
+
+1. The target program runs inside a **PTY**
+2. A script drives interaction deterministically
+3. Input is sent immediately to the program
+4. Output is intercepted and re-rendered
+5. Typing is simulated visually, not echoed
+
+This avoids:
+- line buffering
+- terminal echo quirks
+- readline redraw behavior
+- race conditions
+
+---
+
+## Example Script
+
+```text
+wait 1s
+type "put github.username littlejohnny"
+wait 500ms
+type "get github.*"
+```
+
+## Event Model
+
+Internally, everything is an event:
+
+```
+enum Event {
+    SendToProgram(Vec<u8>),
+    ShowToUser(Vec<u8>),
+    TypeText {
+        text: String,
+        min_delay: Duration,
+        max_delay: Duration,
+    },
+    Sleep(Duration),
+}
+```
+
+**Program input and user-visible output are separate streams.**
+
+## Project Status
+
+🚧 Early stage / design-first
+
+## Planned next steps:
+
+* YAML / JSON script format
+
+* ANSI escape parsing (vt100)
+
+* Built-in asciinema exporter
+
+* Mistyped input simulation
+
+* Redaction and masking rules
+
+## Why Not Just Use Expect?
+
+Because this tool solves a different problem.
+
+| Tool         | Focus                               |
+|--------------|:-----------------------------------:|
+|expect        | Automate interaction                |
+|asciinema     | Record terminals                    |
+|this project  | Present interactions realistically  |
+
+## Inspiration
+
+This project grew out of real-world frustration trying to record high-quality demos of readline-based CLI tools where input appeared instant, robotic, or incorrect.
+
+# License
+
+MIT
+
+# Contributing
+
+Ideas, feedback, and design discussions are welcome.
+If you’ve tried to record CLI demos and hit similar limits — you’re exactly the audience.
