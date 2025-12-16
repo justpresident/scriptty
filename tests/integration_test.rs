@@ -1,6 +1,5 @@
 use std::fs;
 use std::process::Command;
-use std::time::Duration;
 
 #[test]
 fn test_basic_script_execution() {
