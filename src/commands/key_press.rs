@@ -147,16 +147,18 @@ fn key_to_bytes(key: &str, ctrl: bool, alt: bool, shift: bool) -> Result<Vec<u8>
             // Single ASCII character
             let mut chars = key.chars();
             if let Some(ch) = chars.next()
-                && chars.next().is_none() && ch.is_ascii() {
-                    let byte = ch as u8;
-                    if ctrl && ch.is_ascii_alphabetic() {
-                        return Ok(vec![ch.to_ascii_lowercase() as u8 - b'a' + 1]);
-                    } else if alt {
-                        return Ok(vec![0x1b, byte]);
-                    } else {
-                        return Ok(vec![byte]);
-                    }
+                && chars.next().is_none()
+                && ch.is_ascii()
+            {
+                let byte = ch as u8;
+                if ctrl && ch.is_ascii_alphabetic() {
+                    return Ok(vec![ch.to_ascii_lowercase() as u8 - b'a' + 1]);
+                } else if alt {
+                    return Ok(vec![0x1b, byte]);
+                } else {
+                    return Ok(vec![byte]);
                 }
+            }
             Err(anyhow!("Unknown key: {}", key))
         }
     }
