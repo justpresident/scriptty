@@ -3,6 +3,8 @@
 **/*.rs.bk
 *.pdb
 
+.claude
+
 # IDE
 .vscode/
 .idea/
