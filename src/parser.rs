@@ -1,9 +1,34 @@
+//! Script parser for the scriptty scripting language.
+//!
+//! The top-level entry points are [`parse_str`] and [`parse_file`].
+
 use crate::event::Event;
 use anyhow::{Context, Result, anyhow};
+use std::path::Path;
 use std::time::Duration;
 
-/// Parse a script file into a sequence of events
-pub fn parse_script(content: &str) -> Result<Vec<Event>> {
+/// Parse a scriptty script from a string slice and return the resulting events.
+///
+/// Lines that are empty or start with `#` are ignored. Inline comments (` # …`)
+/// are stripped while preserving `#` characters inside quoted strings.
+///
+/// # Errors
+///
+/// Returns an error if any line contains an unknown command, a malformed
+/// argument, or an unclosed quoted string.
+///
+/// # Example
+///
+/// ```
+/// use scriptty::parse_str;
+///
+/// let events = parse_str(r#"
+/// wait 500ms
+/// type "hello world"
+/// "#).unwrap();
+/// assert_eq!(events.len(), 2);
+/// ```
+pub fn parse_str(content: &str) -> Result<Vec<Event>> {
     let mut events = Vec::new();
 
     for (line_num, line) in content.lines().enumerate() {
@@ -26,7 +51,29 @@ pub fn parse_script(content: &str) -> Result<Vec<Event>> {
     Ok(events)
 }
 
-/// Strip inline comments from a line, preserving # inside quoted strings
+/// Parse a scriptty script from a file and return the resulting events.
+///
+/// Reads the entire file into memory and delegates to [`parse_str`].
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read or if the script is malformed.
+///
+/// # Example
+///
+/// ```no_run
+/// use scriptty::parse_file;
+///
+/// let events = parse_file("my_script.script").unwrap();
+/// ```
+pub fn parse_file(path: impl AsRef<Path>) -> Result<Vec<Event>> {
+    let path = path.as_ref();
+    let content = std::fs::read_to_string(path)
+        .with_context(|| format!("Failed to read script file: {}", path.display()))?;
+    parse_str(&content)
+}
+
+/// Strip inline comments from a line, preserving `#` inside quoted strings.
 fn strip_inline_comment(line: &str) -> &str {
     let mut in_quotes = false;
     let mut escaped = false;
@@ -55,7 +102,7 @@ fn strip_inline_comment(line: &str) -> &str {
     line
 }
 
-/// Parse a single line into an event
+/// Parse a single non-empty, non-comment line into an event.
 fn parse_line(line: &str) -> Result<Event> {
     if let Some(rest) = line.strip_prefix("wait ") {
         parse_wait(rest)
@@ -72,41 +119,39 @@ fn parse_line(line: &str) -> Result<Event> {
     }
 }
 
-/// Parse a wait command: "wait 1s", "wait 500ms"
+/// Parse a `wait` command: `wait 1s`, `wait 500ms`.
 fn parse_wait(rest: &str) -> Result<Event> {
     let duration = parse_duration(rest)?;
     Ok(Event::sleep(duration))
 }
 
-/// Parse a type command: type "text here"
+/// Parse a `type` command: `type "text here"`.
 fn parse_type(rest: &str) -> Result<Event> {
     let text = parse_quoted_string(rest)?;
     Ok(Event::type_text(text))
 }
 
-/// Parse a send command: send "text here"
+/// Parse a `send` command: `send "text here"`.
 fn parse_send(rest: &str) -> Result<Event> {
     let text = parse_quoted_string(rest)?;
     Ok(Event::send(text))
 }
 
-/// Parse a show command: show "text to display"
+/// Parse a `show` command: `show "text to display"`.
 fn parse_show(rest: &str) -> Result<Event> {
     let text = parse_quoted_string(rest)?;
     Ok(Event::show(text))
 }
 
-/// Parse an expect command: expect "pattern" [timeout]
-/// Examples: expect "$ ", expect "Password:" 10s
+/// Parse an `expect` command: `expect "pattern"` or `expect "pattern" 10s`.
 fn parse_expect(rest: &str) -> Result<Event> {
     let rest = rest.trim();
 
-    // Find the end of the quoted string
     if !rest.starts_with('"') {
         return Err(anyhow!("Expected quoted string after 'expect'"));
     }
 
-    // Find the closing quote
+    // Locate the closing quote
     let mut escaped = false;
     let mut end_quote_idx = None;
     for (i, ch) in rest.chars().enumerate().skip(1) {
@@ -130,16 +175,14 @@ fn parse_expect(rest: &str) -> Result<Event> {
     let remainder = rest[end_idx + 1..].trim();
 
     if remainder.is_empty() {
-        // No timeout specified, use default
         Ok(Event::expect(pattern))
     } else {
-        // Parse timeout
         let timeout = parse_duration(remainder)?;
         Ok(Event::expect_with_timeout(pattern, timeout))
     }
 }
 
-/// Parse duration from strings like "1s", "500ms", "1.5s"
+/// Parse a duration string: `1s`, `500ms`, `1.5s`.
 fn parse_duration(s: &str) -> Result<Duration> {
     let s = s.trim();
 
@@ -157,7 +200,7 @@ fn parse_duration(s: &str) -> Result<Duration> {
     }
 }
 
-/// Parse a quoted string: "hello world" -> hello world
+/// Parse a double-quoted string, processing escape sequences (`\n`, `\t`, `\"`, `\\`).
 fn parse_quoted_string(s: &str) -> Result<String> {
     let s = s.trim();
 
@@ -171,7 +214,6 @@ fn parse_quoted_string(s: &str) -> Result<String> {
 
     let content = &s[1..s.len() - 1];
 
-    // Handle basic escape sequences
     let content = content
         .replace("\\n", "\n")
         .replace("\\t", "\t")
@@ -209,7 +251,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_script() {
+    fn test_parse_str() {
         let script = r#"
 # This is a comment
 wait 1s
@@ -218,7 +260,7 @@ wait 500ms
 send "command"
 "#;
 
-        let events = parse_script(script).unwrap();
+        let events = parse_str(script).unwrap();
         assert_eq!(events.len(), 4);
     }
 
@@ -230,7 +272,7 @@ expect "Password:" 10s
 expect "Ready" 500ms
 "#;
 
-        let events = parse_script(script).unwrap();
+        let events = parse_str(script).unwrap();
         assert_eq!(events.len(), 3);
     }
 
@@ -247,7 +289,7 @@ type "test"
 
 "#;
 
-        let events = parse_script(script).unwrap();
+        let events = parse_str(script).unwrap();
         assert_eq!(events.len(), 2);
     }
 
@@ -259,14 +301,14 @@ type "test"
 # Comment 3
 "#;
 
-        let events = parse_script(script).unwrap();
+        let events = parse_str(script).unwrap();
         assert_eq!(events.len(), 0);
     }
 
     #[test]
     fn test_parse_escaped_strings() {
         let script = r#"type "hello \"world\"""#;
-        let events = parse_script(script).unwrap();
+        let events = parse_str(script).unwrap();
         assert_eq!(events.len(), 1);
 
         match &events[0] {
@@ -280,7 +322,7 @@ type "test"
     #[test]
     fn test_parse_newlines_in_strings() {
         let script = r#"type "line1\nline2""#;
-        let events = parse_script(script).unwrap();
+        let events = parse_str(script).unwrap();
         assert_eq!(events.len(), 1);
 
         match &events[0] {
@@ -294,16 +336,15 @@ type "test"
     #[test]
     fn test_parse_invalid_duration() {
         let script = r#"wait 5minutes"#;
-        let result = parse_script(script);
+        let result = parse_str(script);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_parse_invalid_command() {
         let script = r#"unknown_command "test""#;
-        let result = parse_script(script);
+        let result = parse_str(script);
         assert!(result.is_err());
-        // The error message includes context, so check for a broader match
         let err_msg = result.unwrap_err().to_string();
         assert!(
             err_msg.contains("Unknown command") || err_msg.contains("unknown_command"),
@@ -315,14 +356,14 @@ type "test"
     #[test]
     fn test_parse_unclosed_quote() {
         let script = r#"type "unclosed"#;
-        let result = parse_script(script);
+        let result = parse_str(script);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_parse_fractional_seconds() {
         let script = r#"wait 1.5s"#;
-        let events = parse_script(script).unwrap();
+        let events = parse_str(script).unwrap();
         assert_eq!(events.len(), 1);
 
         match &events[0] {
@@ -336,7 +377,7 @@ type "test"
     #[test]
     fn test_parse_expect_with_spaces() {
         let script = r#"expect "hello world" 2s"#;
-        let events = parse_script(script).unwrap();
+        let events = parse_str(script).unwrap();
         assert_eq!(events.len(), 1);
 
         match &events[0] {
@@ -364,7 +405,7 @@ expect "prompt"
 send "exit"
 "#;
 
-        let events = parse_script(script).unwrap();
+        let events = parse_str(script).unwrap();
         assert_eq!(events.len(), 4);
     }
 
@@ -394,14 +435,14 @@ type "hello" # Type greeting
 expect "world" 2s # Wait for response
 "#;
 
-        let events = parse_script(script).unwrap();
+        let events = parse_str(script).unwrap();
         assert_eq!(events.len(), 3);
     }
 
     #[test]
     fn test_parse_show_command() {
         let script = r#"show "This is a message""#;
-        let events = parse_script(script).unwrap();
+        let events = parse_str(script).unwrap();
         assert_eq!(events.len(), 1);
 
         match &events[0] {
@@ -423,7 +464,7 @@ expect "output"
 show "Comment: This is happening"
 "#;
 
-        let events = parse_script(script).unwrap();
+        let events = parse_str(script).unwrap();
         assert_eq!(events.len(), 5);
     }
 }

@@ -1,19 +1,12 @@
-mod engine;
-mod event;
-mod parser;
-mod pty;
-mod pty_reader;
-
 use anyhow::{Context, Result};
 use clap::Parser;
-use engine::Engine;
-use pty::PtySession;
-use std::fs;
+use scriptty::{Engine, parse_file};
+use std::io::Write;
 
 #[derive(Parser, Debug)]
 #[command(
     name = "scriptty",
-    about = "Terminal proxy demo engine - create realistic, reproducible terminal demos",
+    about = "Run a scriptty script against an interactive terminal program",
     version
 )]
 struct Args {
@@ -34,35 +27,26 @@ struct Args {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    // Read and parse the script
-    let script_content = fs::read_to_string(&args.script)
-        .with_context(|| format!("Failed to read script file: {}", args.script))?;
+    let events = parse_file(&args.script)
+        .with_context(|| format!("Failed to parse script file: {}", args.script))?;
 
-    let events = parser::parse_script(&script_content).context("Failed to parse script")?;
+    let mut engine = Engine::spawn(&args.command, &args.args).context("Failed to spawn engine")?;
 
-    // Spawn the PTY with the target program
-    let (pty, reader) =
-        PtySession::spawn(&args.command, &args.args).context("Failed to spawn PTY")?;
-
-    // Spawn background reader thread
-    let output_rx = pty_reader::spawn_reader(reader);
-
-    // Give the program time to start up
+    // Give the program time to start up before executing events.
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    // Create and run the engine
-    let mut engine = Engine::new(pty, output_rx);
-
-    clear_screen();
+    clear_screen()?;
 
     engine
         .execute(events)
         .await
-        .context("Failed to execute events")?;
+        .context("Failed to execute script")?;
 
     Ok(())
 }
 
-fn clear_screen() {
-    print!("\x1B[2J\x1B[1;1H"); // Clear screen
+fn clear_screen() -> Result<()> {
+    print!("\x1B[2J\x1B[1;1H");
+    std::io::stdout().flush()?;
+    Ok(())
 }

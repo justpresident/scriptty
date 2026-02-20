@@ -2,6 +2,20 @@
 name = "scriptty"
 version = "0.1.0"
 edition = "2024"
+description = "A PTY scripting engine for automating interactive terminal sessions"
+license = "Apache-2.0"
+repository = "https://github.com/justpresident/scriptty"
+readme = "README.md"
+keywords = ["pty", "terminal", "automation", "scripting", "tty"]
+categories = ["command-line-utilities", "development-tools"]
+
+[lib]
+name = "scriptty"
+path = "src/lib.rs"
+
+[[bin]]
+name = "scriptty"
+path = "src/main.rs"
 
 [dependencies]
 portable-pty = "0.8"
