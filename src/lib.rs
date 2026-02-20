@@ -21,9 +21,9 @@
 //! send "exit"
 //! "#;
 //!
-//!     let events = parse_str(script)?;
+//!     let commands = parse_str(script)?;
 //!     let mut engine = Engine::spawn("bash", &[] as &[&str])?;
-//!     engine.execute(events).await?;
+//!     engine.execute(commands).await?;
 //!     Ok(())
 //! }
 //! ```
@@ -32,7 +32,7 @@
 //!
 //! Use [`parse_str`] to parse a script from an in-memory string, or
 //! [`parse_file`] to read one from a file path. Both return a
-//! `Vec<`[`Event`]`>` that can be passed to [`Engine::execute`].
+//! `Vec<Box<dyn `[`ScripttyCommand`]`>>` ready to pass to [`Engine::execute`].
 //!
 //! ## Script syntax
 //!
@@ -56,7 +56,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
-//!     let events = parse_str(r#"type "hello""#)?;
+//!     let commands = parse_str(r#"type "hello""#)?;
 //!
 //!     let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
 //!     let sink = captured.clone();
@@ -65,18 +65,50 @@
 //!         sink.lock().unwrap().extend_from_slice(data);
 //!     })?;
 //!
-//!     engine.execute(events).await?;
+//!     engine.execute(commands).await?;
 //!     println!("{}", String::from_utf8_lossy(&captured.lock().unwrap()));
 //!     Ok(())
 //! }
 //! ```
+//!
+//! ## Implementing a custom command
+//!
+//! Implement [`ScripttyCommand`] to add new commands to the engine:
+//!
+//! ```no_run
+//! use scriptty::command::{Context, ScripttyCommand};
+//! use async_trait::async_trait;
+//! use anyhow::Result;
+//!
+//! pub struct Beep;
+//!
+//! impl Beep {
+//!     pub const NAME: &'static str = "beep";
+//! }
+//!
+//! #[async_trait(?Send)]
+//! impl ScripttyCommand for Beep {
+//!     fn name(&self) -> &'static str { Self::NAME }
+//!
+//!     fn parse(_args: &str) -> Result<Self> {
+//!         Ok(Self)
+//!     }
+//!
+//!     async fn execute(&self, ctx: &mut Context) -> Result<()> {
+//!         ctx.emit(b"\x07"); // BEL character
+//!         Ok(())
+//!     }
+//! }
+//! ```
 
-pub mod event;
+pub mod command;
+pub mod commands;
 pub mod engine;
 pub mod parser;
 pub(crate) mod pty;
 pub(crate) mod pty_reader;
 
-pub use event::Event;
+pub use command::{Context, ScripttyCommand};
+pub use commands::{Expect, SendInput, Show, TypeText, Wait};
 pub use engine::Engine;
 pub use parser::{parse_file, parse_str};

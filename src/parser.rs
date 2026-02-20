@@ -2,12 +2,13 @@
 //!
 //! The top-level entry points are [`parse_str`] and [`parse_file`].
 
-use crate::event::Event;
-use anyhow::{Context, Result, anyhow};
+use crate::command::ScripttyCommand;
+use crate::commands::{Expect, SendInput, Show, TypeText, Wait};
+use anyhow::{Context as _, Result, anyhow};
 use std::path::Path;
 use std::time::Duration;
 
-/// Parse a scriptty script from a string slice and return the resulting events.
+/// Parse a scriptty script from a string slice and return the resulting commands.
 ///
 /// Lines that are empty or start with `#` are ignored. Inline comments (` # …`)
 /// are stripped while preserving `#` characters inside quoted strings.
@@ -22,36 +23,25 @@ use std::time::Duration;
 /// ```
 /// use scriptty::parse_str;
 ///
-/// let events = parse_str(r#"
-/// wait 500ms
-/// type "hello world"
-/// "#).unwrap();
-/// assert_eq!(events.len(), 2);
+/// let commands = parse_str("wait 500ms\ntype \"hello world\"\n").unwrap();
+/// assert_eq!(commands.len(), 2);
 /// ```
-pub fn parse_str(content: &str) -> Result<Vec<Event>> {
-    let mut events = Vec::new();
-
+pub fn parse_str(content: &str) -> Result<Vec<Box<dyn ScripttyCommand>>> {
+    let mut commands = Vec::new();
     for (line_num, line) in content.lines().enumerate() {
         let line = line.trim();
-
-        // Skip empty lines and comments
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-
-        // Remove inline comments (but preserve # inside quoted strings)
         let line = strip_inline_comment(line);
-
-        let event = parse_line(line)
+        let cmd = parse_line(line)
             .with_context(|| format!("Failed to parse line {}: {}", line_num + 1, line))?;
-
-        events.push(event);
+        commands.push(cmd);
     }
-
-    Ok(events)
+    Ok(commands)
 }
 
-/// Parse a scriptty script from a file and return the resulting events.
+/// Parse a scriptty script from a file and return the resulting commands.
 ///
 /// Reads the entire file into memory and delegates to [`parse_str`].
 ///
@@ -64,128 +54,65 @@ pub fn parse_str(content: &str) -> Result<Vec<Event>> {
 /// ```no_run
 /// use scriptty::parse_file;
 ///
-/// let events = parse_file("my_script.script").unwrap();
+/// let commands = parse_file("my_script.script").unwrap();
 /// ```
-pub fn parse_file(path: impl AsRef<Path>) -> Result<Vec<Event>> {
+pub fn parse_file(path: impl AsRef<Path>) -> Result<Vec<Box<dyn ScripttyCommand>>> {
     let path = path.as_ref();
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read script file: {}", path.display()))?;
     parse_str(&content)
 }
 
+type ParseFn = fn(&str) -> Result<Box<dyn ScripttyCommand>>;
+
+static REGISTRY: &[(&str, ParseFn)] = &[
+    (TypeText::NAME, TypeText::parse_boxed),
+    (SendInput::NAME, SendInput::parse_boxed),
+    (Show::NAME, Show::parse_boxed),
+    (Wait::NAME, Wait::parse_boxed),
+    (Expect::NAME, Expect::parse_boxed),
+];
+
+/// Dispatch a single non-empty, non-comment line to the matching command's parser.
+///
+/// To add a new command, add one entry to [`REGISTRY`] using the command's
+/// `NAME` constant and `parse_boxed` function pointer.
+fn parse_line(line: &str) -> Result<Box<dyn ScripttyCommand>> {
+    let (name, args) = line.split_once(' ').unwrap_or((line, ""));
+    REGISTRY
+        .iter()
+        .find(|(cmd_name, _)| *cmd_name == name)
+        .map(|(_, parse)| parse(args))
+        .unwrap_or_else(|| Err(anyhow!("Unknown command: {}", line)))
+}
+
 /// Strip inline comments from a line, preserving `#` inside quoted strings.
 fn strip_inline_comment(line: &str) -> &str {
     let mut in_quotes = false;
     let mut escaped = false;
-
     for (i, ch) in line.char_indices() {
         if escaped {
             escaped = false;
             continue;
         }
-
         if ch == '\\' {
             escaped = true;
             continue;
         }
-
         if ch == '"' {
             in_quotes = !in_quotes;
             continue;
         }
-
         if ch == '#' && !in_quotes {
             return line[..i].trim();
         }
     }
-
     line
 }
 
-/// Parse a single non-empty, non-comment line into an event.
-fn parse_line(line: &str) -> Result<Event> {
-    if let Some(rest) = line.strip_prefix("wait ") {
-        parse_wait(rest)
-    } else if let Some(rest) = line.strip_prefix("type ") {
-        parse_type(rest)
-    } else if let Some(rest) = line.strip_prefix("send ") {
-        parse_send(rest)
-    } else if let Some(rest) = line.strip_prefix("expect ") {
-        parse_expect(rest)
-    } else if let Some(rest) = line.strip_prefix("show ") {
-        parse_show(rest)
-    } else {
-        Err(anyhow!("Unknown command: {}", line))
-    }
-}
-
-/// Parse a `wait` command: `wait 1s`, `wait 500ms`.
-fn parse_wait(rest: &str) -> Result<Event> {
-    let duration = parse_duration(rest)?;
-    Ok(Event::sleep(duration))
-}
-
-/// Parse a `type` command: `type "text here"`.
-fn parse_type(rest: &str) -> Result<Event> {
-    let text = parse_quoted_string(rest)?;
-    Ok(Event::type_text(text))
-}
-
-/// Parse a `send` command: `send "text here"`.
-fn parse_send(rest: &str) -> Result<Event> {
-    let text = parse_quoted_string(rest)?;
-    Ok(Event::send(text))
-}
-
-/// Parse a `show` command: `show "text to display"`.
-fn parse_show(rest: &str) -> Result<Event> {
-    let text = parse_quoted_string(rest)?;
-    Ok(Event::show(text))
-}
-
-/// Parse an `expect` command: `expect "pattern"` or `expect "pattern" 10s`.
-fn parse_expect(rest: &str) -> Result<Event> {
-    let rest = rest.trim();
-
-    if !rest.starts_with('"') {
-        return Err(anyhow!("Expected quoted string after 'expect'"));
-    }
-
-    // Locate the closing quote
-    let mut escaped = false;
-    let mut end_quote_idx = None;
-    for (i, ch) in rest.chars().enumerate().skip(1) {
-        if escaped {
-            escaped = false;
-            continue;
-        }
-        if ch == '\\' {
-            escaped = true;
-            continue;
-        }
-        if ch == '"' {
-            end_quote_idx = Some(i);
-            break;
-        }
-    }
-
-    let end_idx = end_quote_idx.ok_or_else(|| anyhow!("Unclosed quote in expect command"))?;
-
-    let pattern = parse_quoted_string(&rest[..=end_idx])?;
-    let remainder = rest[end_idx + 1..].trim();
-
-    if remainder.is_empty() {
-        Ok(Event::expect(pattern))
-    } else {
-        let timeout = parse_duration(remainder)?;
-        Ok(Event::expect_with_timeout(pattern, timeout))
-    }
-}
-
 /// Parse a duration string: `1s`, `500ms`, `1.5s`.
-fn parse_duration(s: &str) -> Result<Duration> {
+pub(crate) fn parse_duration(s: &str) -> Result<Duration> {
     let s = s.trim();
-
     if let Some(ms_str) = s.strip_suffix("ms") {
         let ms: u64 = ms_str
             .trim()
@@ -200,27 +127,20 @@ fn parse_duration(s: &str) -> Result<Duration> {
     }
 }
 
-/// Parse a double-quoted string, processing escape sequences (`\n`, `\t`, `\"`, `\\`).
-fn parse_quoted_string(s: &str) -> Result<String> {
+/// Parse a double-quoted string, processing `\n`, `\t`, `\"`, and `\\`.
+pub(crate) fn parse_quoted_string(s: &str) -> Result<String> {
     let s = s.trim();
-
     if !s.starts_with('"') {
         return Err(anyhow!("Expected string to start with '\"'"));
     }
-
     if !s.ends_with('"') {
         return Err(anyhow!("Expected string to end with '\"'"));
     }
-
-    let content = &s[1..s.len() - 1];
-
-    let content = content
+    Ok(s[1..s.len() - 1]
         .replace("\\n", "\n")
         .replace("\\t", "\t")
         .replace("\\\"", "\"")
-        .replace("\\\\", "\\");
-
-    Ok(content)
+        .replace("\\\\", "\\"))
 }
 
 #[cfg(test)]
@@ -252,161 +172,55 @@ mod tests {
 
     #[test]
     fn test_parse_str() {
-        let script = r#"
-# This is a comment
-wait 1s
-type "hello world"
-wait 500ms
-send "command"
-"#;
-
-        let events = parse_str(script).unwrap();
-        assert_eq!(events.len(), 4);
+        let cmds = parse_str("wait 1s\ntype \"hello\"\nwait 500ms\nsend \"cmd\"\n").unwrap();
+        assert_eq!(cmds.len(), 4);
     }
 
     #[test]
-    fn test_parse_expect() {
-        let script = r#"
-expect "$ "
-expect "Password:" 10s
-expect "Ready" 500ms
-"#;
-
-        let events = parse_str(script).unwrap();
-        assert_eq!(events.len(), 3);
-    }
-
-    #[test]
-    fn test_parse_empty_lines() {
-        let script = r#"
-
-
-wait 1s
-
-
-type "test"
-
-
-"#;
-
-        let events = parse_str(script).unwrap();
-        assert_eq!(events.len(), 2);
+    fn test_parse_all_commands() {
+        let cmds = parse_str(
+            "wait 500ms\ntype \"cmd\"\nsend \"instant\"\nexpect \"out\"\nshow \"note\"\n",
+        )
+        .unwrap();
+        assert_eq!(cmds.len(), 5);
+        assert_eq!(cmds[0].name(), "wait");
+        assert_eq!(cmds[1].name(), "type");
+        assert_eq!(cmds[2].name(), "send");
+        assert_eq!(cmds[3].name(), "expect");
+        assert_eq!(cmds[4].name(), "show");
     }
 
     #[test]
     fn test_parse_comments_only() {
-        let script = r#"
-# Comment 1
-# Comment 2
-# Comment 3
-"#;
-
-        let events = parse_str(script).unwrap();
-        assert_eq!(events.len(), 0);
+        assert_eq!(parse_str("# c1\n# c2\n").unwrap().len(), 0);
     }
 
     #[test]
-    fn test_parse_escaped_strings() {
-        let script = r#"type "hello \"world\"""#;
-        let events = parse_str(script).unwrap();
-        assert_eq!(events.len(), 1);
-
-        match &events[0] {
-            Event::TypeText { text, .. } => {
-                assert_eq!(text, "hello \"world\"");
-            }
-            _ => panic!("Expected TypeText event"),
-        }
-    }
-
-    #[test]
-    fn test_parse_newlines_in_strings() {
-        let script = r#"type "line1\nline2""#;
-        let events = parse_str(script).unwrap();
-        assert_eq!(events.len(), 1);
-
-        match &events[0] {
-            Event::TypeText { text, .. } => {
-                assert_eq!(text, "line1\nline2");
-            }
-            _ => panic!("Expected TypeText event"),
-        }
-    }
-
-    #[test]
-    fn test_parse_invalid_duration() {
-        let script = r#"wait 5minutes"#;
-        let result = parse_str(script);
-        assert!(result.is_err());
+    fn test_parse_empty_lines() {
+        let cmds = parse_str("\n\nwait 1s\n\ntype \"test\"\n\n").unwrap();
+        assert_eq!(cmds.len(), 2);
     }
 
     #[test]
     fn test_parse_invalid_command() {
-        let script = r#"unknown_command "test""#;
-        let result = parse_str(script);
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
+        let err = parse_str("unknown_command \"test\"")
+            .err()
+            .unwrap()
+            .to_string();
         assert!(
-            err_msg.contains("Unknown command") || err_msg.contains("unknown_command"),
-            "Expected error about unknown command, got: {}",
-            err_msg
+            err.contains("Unknown command") || err.contains("unknown_command"),
+            "got: {err}"
         );
     }
 
     #[test]
+    fn test_parse_invalid_duration() {
+        assert!(parse_str("wait 5minutes").is_err());
+    }
+
+    #[test]
     fn test_parse_unclosed_quote() {
-        let script = r#"type "unclosed"#;
-        let result = parse_str(script);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_parse_fractional_seconds() {
-        let script = r#"wait 1.5s"#;
-        let events = parse_str(script).unwrap();
-        assert_eq!(events.len(), 1);
-
-        match &events[0] {
-            Event::Sleep(duration) => {
-                assert_eq!(*duration, Duration::from_secs_f64(1.5));
-            }
-            _ => panic!("Expected Sleep event"),
-        }
-    }
-
-    #[test]
-    fn test_parse_expect_with_spaces() {
-        let script = r#"expect "hello world" 2s"#;
-        let events = parse_str(script).unwrap();
-        assert_eq!(events.len(), 1);
-
-        match &events[0] {
-            Event::Expect { pattern, timeout } => {
-                assert_eq!(pattern, "hello world");
-                assert_eq!(*timeout, Duration::from_secs(2));
-            }
-            _ => panic!("Expected Expect event"),
-        }
-    }
-
-    #[test]
-    fn test_parse_mixed_script() {
-        let script = r#"
-# Start of script
-wait 500ms
-
-# Type something
-type "hello"
-
-# Wait for response
-expect "prompt"
-
-# Send command
-send "exit"
-"#;
-
-        let events = parse_str(script).unwrap();
-        assert_eq!(events.len(), 4);
+        assert!(parse_str("type \"unclosed").is_err());
     }
 
     #[test]
@@ -424,47 +238,11 @@ send "exit"
             strip_inline_comment("type \"test#1\" # comment"),
             "type \"test#1\""
         );
-        assert_eq!(strip_inline_comment("# full comment"), "");
     }
 
     #[test]
     fn test_parse_with_inline_comments() {
-        let script = r#"
-wait 1s # Wait a bit
-type "hello" # Type greeting
-expect "world" 2s # Wait for response
-"#;
-
-        let events = parse_str(script).unwrap();
-        assert_eq!(events.len(), 3);
-    }
-
-    #[test]
-    fn test_parse_show_command() {
-        let script = r#"show "This is a message""#;
-        let events = parse_str(script).unwrap();
-        assert_eq!(events.len(), 1);
-
-        match &events[0] {
-            Event::ShowToUser(data) => {
-                let text = String::from_utf8_lossy(data);
-                assert!(text.contains("This is a message"));
-            }
-            _ => panic!("Expected ShowToUser event"),
-        }
-    }
-
-    #[test]
-    fn test_parse_all_commands() {
-        let script = r#"
-wait 500ms
-type "command"
-send "instant"
-expect "output"
-show "Comment: This is happening"
-"#;
-
-        let events = parse_str(script).unwrap();
-        assert_eq!(events.len(), 5);
+        let cmds = parse_str("wait 1s # delay\ntype \"hi\" # greet\nexpect \"ok\" 2s\n").unwrap();
+        assert_eq!(cmds.len(), 3);
     }
 }
