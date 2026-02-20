@@ -11,6 +11,8 @@ expect "$"
 show "# Step 1: We'll echo a greeting"
 wait 500ms
 type "echo 'Hello, World!'"
+wait 200ms
+key Enter
 expect "Hello, World!"
 
 wait 500ms
@@ -20,6 +22,8 @@ show ""
 show "# Step 2: Let's check the current directory"
 wait 500ms
 type "pwd"
+wait 200ms
+key Enter
 expect "/"
 
 wait 500ms
@@ -29,6 +33,8 @@ show ""
 show "# Step 3: Listing files"
 wait 500ms
 type "ls -l | head -5"
+wait 200ms
+key Enter
 wait 1s
 
 expect "$"
@@ -36,3 +42,5 @@ show ""
 show "=== Demo Complete ==="
 
 type "exit"
+wait 200ms
+key Enter

@@ -10,8 +10,6 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 /// Sends bytes to the program's stdin immediately without any visible output.
-///
-/// A newline is appended so the program receives a complete line.
 pub struct SendInput {
     pub data: Vec<u8>,
 }
@@ -19,11 +17,11 @@ pub struct SendInput {
 impl SendInput {
     pub const NAME: &'static str = "send";
 
-    /// Create a `SendInput` command. A newline is appended automatically.
+    /// Create a `SendInput` command from a string.
     pub fn new(text: impl Into<String>) -> Self {
-        let mut bytes = text.into().into_bytes();
-        bytes.push(b'\n');
-        Self { data: bytes }
+        Self {
+            data: text.into().into_bytes(),
+        }
     }
 }
 
@@ -53,12 +51,12 @@ mod tests {
     #[test]
     fn test_parse() {
         let cmd = SendInput::parse(r#""hello""#).unwrap();
-        assert_eq!(cmd.data, b"hello\n");
+        assert_eq!(cmd.data, b"hello");
     }
 
     #[test]
-    fn test_newline_appended() {
+    fn test_data_content() {
         let cmd = SendInput::new("cmd");
-        assert_eq!(cmd.data.last(), Some(&b'\n'));
+        assert_eq!(cmd.data, b"cmd");
     }
 }

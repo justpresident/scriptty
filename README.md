@@ -162,6 +162,7 @@ expect "$ "
 
 # Type a command with realistic delays
 type "put github.username littlejohnny"
+key Enter
 
 # Wait for specific output before continuing
 expect "saved"
@@ -173,6 +174,7 @@ wait 500ms
 
 # Execute another command
 type "get github.*"
+key Enter
 
 # Wait for the output
 expect "littlejohnny"
@@ -180,22 +182,13 @@ expect "littlejohnny"
 
 ## Event Model
 
-Internally, everything is an event:
+Internally, every script line maps to a command implementing the `ScripttyCommand` trait:
 
 ```rust
-enum Event {
-    SendToProgram(Vec<u8>),
-    ShowToUser(Vec<u8>),
-    TypeText {
-        text: String,
-        min_delay: Duration,
-        max_delay: Duration,
-    },
-    Sleep(Duration),
-    Expect {
-        pattern: String,
-        timeout: Duration,
-    },
+pub trait ScripttyCommand: 'static {
+    fn name(&self) -> &'static str;
+    fn parse(args: &str) -> Result<Self> where Self: Sized;
+    async fn execute(&self, ctx: &mut Context) -> Result<()>;
 }
 ```
 
@@ -206,8 +199,9 @@ enum Event {
 | Command | Syntax | Description |
 |---------|--------|-------------|
 | `wait` | `wait 1s` or `wait 500ms` | Pause execution for specified duration |
-| `type` | `type "text here"` | Simulate realistic typing (50-150ms per char) |
-| `send` | `send "text here"` | Send input instantly to program (not visible) |
+| `type` | `type "text here"` | Simulate realistic typing (50-150ms per char), no implicit newline |
+| `send` | `send "text here"` | Send bytes to program instantly (no typing simulation, no implicit newline) |
+| `key` | `key Enter`, `key Ctrl+C`, `key Alt+Left` | Send a key press with optional modifiers (`Ctrl+`, `Alt+`, `Shift+`) |
 | `show` | `show "message"` | Display text directly to viewer (narration, comments) |
 | `expect` | `expect "pattern"` or `expect "pattern" 10s` | Wait for pattern in output (default 5s timeout) |
 

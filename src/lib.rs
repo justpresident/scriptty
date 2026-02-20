@@ -17,8 +17,10 @@
 //!     let script = r#"
 //! expect "$ "
 //! type "echo hello"
+//! key Enter
 //! expect "hello"
 //! send "exit"
+//! key Enter
 //! "#;
 //!
 //!     let commands = parse_str(script)?;
@@ -38,8 +40,9 @@
 //!
 //! | Command | Description |
 //! |---------|-------------|
-//! | `type "text"` | Simulate typing with per-character delays, then send the line |
-//! | `send "text"` | Send text to the program immediately (no visible typing) |
+//! | `type "text"` | Simulate typing with per-character delays |
+//! | `send "text"` | Send text to the program immediately (no typing simulation) |
+//! | `key Enter` | Send a key press (supports `Ctrl+`, `Alt+`, `Shift+` modifiers) |
 //! | `show "text"` | Write text directly to the output handler |
 //! | `expect "pattern"` | Wait until `pattern` appears in the program output |
 //! | `expect "pattern" 5s` | Wait up to 5 seconds for the pattern |
@@ -109,6 +112,6 @@ pub(crate) mod pty;
 pub(crate) mod pty_reader;
 
 pub use command::{Context, ScripttyCommand};
-pub use commands::{Expect, SendInput, Show, TypeText, Wait};
+pub use commands::{Expect, KeyPress, SendInput, Show, TypeText, Wait};
 pub use engine::Engine;
 pub use parser::{parse_file, parse_str};

@@ -3,7 +3,7 @@
 //! The top-level entry points are [`parse_str`] and [`parse_file`].
 
 use crate::command::ScripttyCommand;
-use crate::commands::{Expect, SendInput, Show, TypeText, Wait};
+use crate::commands::{Expect, KeyPress, SendInput, Show, TypeText, Wait};
 use anyhow::{Context as _, Result, anyhow};
 use std::path::Path;
 use std::time::Duration;
@@ -71,6 +71,7 @@ static REGISTRY: &[(&str, ParseFn)] = &[
     (Show::NAME, Show::parse_boxed),
     (Wait::NAME, Wait::parse_boxed),
     (Expect::NAME, Expect::parse_boxed),
+    (KeyPress::NAME, KeyPress::parse_boxed),
 ];
 
 /// Dispatch a single non-empty, non-comment line to the matching command's parser.
@@ -179,15 +180,24 @@ mod tests {
     #[test]
     fn test_parse_all_commands() {
         let cmds = parse_str(
-            "wait 500ms\ntype \"cmd\"\nsend \"instant\"\nexpect \"out\"\nshow \"note\"\n",
+            "wait 500ms\ntype \"cmd\"\nsend \"instant\"\nexpect \"out\"\nshow \"note\"\nkey Enter\n",
         )
         .unwrap();
-        assert_eq!(cmds.len(), 5);
+        assert_eq!(cmds.len(), 6);
         assert_eq!(cmds[0].name(), "wait");
         assert_eq!(cmds[1].name(), "type");
         assert_eq!(cmds[2].name(), "send");
         assert_eq!(cmds[3].name(), "expect");
         assert_eq!(cmds[4].name(), "show");
+        assert_eq!(cmds[5].name(), "key");
+    }
+
+    #[test]
+    fn test_parse_key_command() {
+        let cmds = parse_str("key Enter\nkey Ctrl+C\n").unwrap();
+        assert_eq!(cmds.len(), 2);
+        assert_eq!(cmds[0].name(), "key");
+        assert_eq!(cmds[1].name(), "key");
     }
 
     #[test]

@@ -11,7 +11,7 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 /// Simulates human typing by sending `text` to the PTY one character at a time
-/// with random per-character delays, then submits the line with a newline.
+/// with random per-character delays.
 ///
 /// The PTY's own echo produces the visible output, so each character appears
 /// exactly once regardless of the delay.
@@ -59,11 +59,6 @@ impl ScripttyCommand for TypeText {
             };
             sleep(Duration::from_millis(delay_ms as u64)).await;
         }
-
-        // Longer pause after the last character before submitting.
-        sleep(Duration::from_millis(2 * self.max_delay.as_millis() as u64)).await;
-        ctx.write_to_pty(b"\n")?;
-        sleep(Duration::from_millis(100)).await;
 
         Ok(())
     }
